@@ -48,7 +48,7 @@ var (
 // Scene to be rendered by the app.
 type Scene interface {
 	// Setup any OpenGL requirements for the scene.
-	Setup() error
+	Setup(ctx *Context) error
 	// Update the state of the scene.
 	Update(dt float32)
 	// Display the scene.
@@ -87,8 +87,10 @@ type Config struct {
 
 // Context of the app.
 type Context struct {
-	Config Config
-	Scene  Scene
+	Config       Config
+	ScreenWidth  int
+	ScreenHeight int
+	Scene        Scene
 }
 
 // New app context is returned.
@@ -100,19 +102,21 @@ func New(c Config, s Scene) Context {
 }
 
 // Run the app.
-func (a *Context) Run() error {
+func (ctx *Context) Run() error {
 	flag.Parse()
 
 	// Set Defaults if needed
-	if a.Config.Name == "" {
-		a.Config.Name = os.Args[0]
+	if ctx.Config.Name == "" {
+		ctx.Config.Name = os.Args[0]
 	}
 	if screenWidth <= 0 {
-		screenWidth = a.Config.DefaultScreenWidth
+		screenWidth = ctx.Config.DefaultScreenWidth
 	}
+	ctx.ScreenWidth = screenWidth
 	if screenHeight <= 0 {
-		screenHeight = a.Config.DefaultScreenHeight
+		screenHeight = ctx.Config.DefaultScreenHeight
 	}
+	ctx.ScreenHeight = screenHeight
 
 	// NOTE: Using GLFW instead of GLUT
 	if err := glfw.Init(); err != nil {
@@ -135,10 +139,10 @@ func (a *Context) Run() error {
 	}
 
 	msg := ""
-	for i := range a.Config.SupportedGLVers {
+	for i := range ctx.Config.SupportedGLVers {
 		var err error
-		maj := int(a.Config.SupportedGLVers[i][0])
-		min := int(a.Config.SupportedGLVers[i][1])
+		maj := int(ctx.Config.SupportedGLVers[i][0])
+		min := int(ctx.Config.SupportedGLVers[i][1])
 
 		glfw.WindowHint(glfw.Resizable, glfw.False)
 		glfw.WindowHint(glfw.ContextVersionMajor, maj)
@@ -146,10 +150,10 @@ func (a *Context) Run() error {
 		glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
 		glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 
-		window, err = glfw.CreateWindow(screenWidth, screenHeight, a.Config.Name, monitor, nil)
+		window, err = glfw.CreateWindow(screenWidth, screenHeight, ctx.Config.Name, monitor, nil)
 		if err != nil {
 			msg += fmt.Sprintf("trying to set GL version %d.%d: %s\n", maj, min, err)
-			if i == len(a.Config.SupportedGLVers)-1 {
+			if i == len(ctx.Config.SupportedGLVers)-1 {
 				return fmt.Errorf("failed to create window: %s", msg)
 			}
 			continue
@@ -168,30 +172,30 @@ func (a *Context) Run() error {
 	fmt.Println("OpenGL version", gl.GoStr(gl.GetString(gl.VERSION)))
 	fmt.Println("GLSL version", gl.GoStr(gl.GetString(gl.SHADING_LANGUAGE_VERSION)))
 
-	if err := a.Scene.Setup(); err != nil {
+	if err := ctx.Scene.Setup(ctx); err != nil {
 		return err
 	}
 
-	sceneKeyCallback = a.Config.KeyCallback
+	sceneKeyCallback = ctx.Config.KeyCallback
 
-	if a.Config.EscapeToQuit {
+	if ctx.Config.EscapeToQuit {
 		window.SetKeyCallback(keyCallback)
 	}
 
 	// TODO: Change to reflect the time between ticks
 	dt := float32(0.0001)
 	for !window.ShouldClose() {
-		a.Scene.Update(dt)
-		a.Scene.Display()
+		ctx.Scene.Update(dt)
+		ctx.Scene.Display()
 
-		if !a.Config.SkipFlushAfterLoop {
+		if !ctx.Config.SkipFlushAfterLoop {
 			gl.Flush()
 		}
 		window.SwapBuffers()
 		glfw.PollEvents()
 	}
 
-	a.Scene.Cleanup()
+	ctx.Scene.Cleanup()
 	return nil
 }
 
